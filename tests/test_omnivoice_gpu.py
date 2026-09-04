@@ -7,13 +7,16 @@ from wyoming_piper.omnivoice import OmniVoiceModel
 
 
 @pytest.mark.parametrize(
-    ("use_cuda", "expected_providers"),
+    ("use_cuda", "use_rocm", "expected_providers"),
     [
-        (False, ["CPUExecutionProvider"]),
-        (True, ["CUDAExecutionProvider", "CPUExecutionProvider"]),
+        (False, False, ["CPUExecutionProvider"]),
+        (True, False, ["CUDAExecutionProvider", "CPUExecutionProvider"]),
+        (False, True, ["MIGraphXExecutionProvider", "CPUExecutionProvider"]),
     ],
 )
-def test_execution_providers(monkeypatch, use_cuda, expected_providers) -> None:
+def test_execution_providers(
+    monkeypatch, use_cuda, use_rocm, expected_providers
+) -> None:
     captured = {}
 
     class FakeInferenceSession:
@@ -49,6 +52,6 @@ def test_execution_providers(monkeypatch, use_cuda, expected_providers) -> None:
     monkeypatch.setitem(sys.modules, "omnivoice.models", ModuleType("omnivoice.models"))
     monkeypatch.setitem(sys.modules, "omnivoice.models.omnivoice", fake_omnivoice)
 
-    OmniVoiceModel("model.onnx", use_cuda=use_cuda)
+    OmniVoiceModel("model.onnx", use_cuda=use_cuda, use_rocm=use_rocm)
 
     assert captured["providers"] == expected_providers

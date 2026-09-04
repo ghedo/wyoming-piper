@@ -1,0 +1,54 @@
+FROM rocm/onnxruntime:rocm7.14.1_ub24.04_ort1.23_torch2.10.0_py3.12
+
+# Optional dependencies to install. The omnivoice extra uses the
+# "omnivoice-deps" variant: the full "omnivoice" extra would pull in gradio,
+# librosa, webdataset and tensorboardx for the demo/training paths, which this
+# backend never imports (42 packages, ~600 MB). "th" is deliberately absent:
+# TLTK drags in gensim, scikit-learn, scipy and pandas for ~500 MB, so Thai is
+# left to a manual `pip install '.[th]'`. "ja" is out for now as well; install
+# it by hand with `pip install '.[ja]'`.
+ARG EXTRAS="zeroconf,zh,web,omnivoice-deps"
+
+WORKDIR /usr/src
+
+COPY ./pyproject.toml ./
+# The package has to exist for setuptools' packages.find to see it, or the
+# editable install maps nothing and importing wyoming_piper only works from
+# /usr/src. Just the __init__.py, so the install layer stays cached until the
+# version changes -- which changes pyproject.toml above anyway.
+COPY ./wyoming_piper/__init__.py ./wyoming_piper/
+RUN \
+    pip3 install --no-cache-dir -U \
+        pip \
+        setuptools \
+        wheel \
+    && pip3 install --no-cache-dir \
+        -e ".[${EXTRAS}]" \
+    # Piper and OmniVoice install regular ONNX Runtime while resolving their
+    # dependencies. Restore AMD's build after removing the overlapping wheels.
+    && pip3 uninstall -y onnxruntime onnxruntime-migraphx \
+    && pip3 install --no-cache-dir --no-deps \
+        "https://rocm.frameworks.amd.com/whl-multi-arch/onnxruntime-migraphx/onnxruntime_migraphx-1.23.2%2Brocm7.14.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" \
+    # OmniVoice's demo/training dependencies are not needed by this backend.
+    && pip3 install --no-cache-dir --no-deps omnivoice \
+    && python3 -c \
+        "import torch, torchaudio; import onnxruntime as ort; assert 'MIGraphXExecutionProvider' in ort.get_available_providers(); assert torch.version.hip" \
+    && ln -s /opt/venv .venv \
+    && rm -rf /root/.cache/pip
+
+COPY ./ ./
+
+EXPOSE 10200
+EXPOSE 5000
+
+# The server only starts listening once the backend is loaded, which means
+# downloading a model on first run -- hence the long start period, during which
+# failures don't count against --retries. --retries covers the other direction:
+# synthesis runs on the event loop, so a check can time out behind a long
+# request without the server being unhealthy.
+HEALTHCHECK --interval=30s --timeout=20s --start-period=5m --retries=3 \
+    CMD ["/usr/src/.venv/bin/python3", "-m", "wyoming_piper.health_check"]
+
+# ROCm acceleration is always enabled for this image. Additional options can be
+# passed normally or through WYOMING_PIPER_ARGS.
+ENTRYPOINT ["bash", "docker_run.sh", "--use-rocm"]

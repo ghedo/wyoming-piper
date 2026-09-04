@@ -101,6 +101,7 @@ def load_omnivoice(cli_args: argparse.Namespace) -> None:
         default_language=cli_args.omnivoice_language,
         local_files_only=cli_args.local_files_only,
         use_cuda=cli_args.use_cuda,
+        use_rocm=cli_args.use_rocm,
     )
 
 
@@ -370,6 +371,12 @@ class PiperEventHandler(AsyncEventHandler):
             _VOICE = PiperVoice.load(
                 model_path, config_path, use_cuda=self.cli_args.use_cuda
             )
+            if self.cli_args.use_rocm:
+                # piper-tts only exposes a CUDA switch, so retarget the ONNX
+                # session it creates to AMD's current ROCm execution provider.
+                _VOICE.session.set_providers(
+                    ["MIGraphXExecutionProvider", "CPUExecutionProvider"]
+                )
             _VOICE_NAME = voice_name
 
         assert _VOICE is not None

@@ -221,12 +221,12 @@ docker run -it \
     --web-server --web-server-host 0.0.0.0
 ```
 
-### NVIDIA GPU image
+### NVIDIA CUDA GPU image
 
-Build the local GPU image with:
+Build the local CUDA image with:
 
 ``` sh
-docker build -f Dockerfile.gpu -t wyoming-piper:gpu .
+docker build -f Dockerfile.CUDA -t wyoming-piper:cuda .
 ```
 
 The image contains CUDA-enabled PyTorch and ONNX Runtime, includes OmniVoice,
@@ -238,7 +238,7 @@ docker run --rm -it \
     --gpus all \
     -p 10200:10200 \
     -v /path/to/local/data:/data \
-    wyoming-piper:gpu \
+    wyoming-piper:cuda \
     --voice en_US-lessac-medium
 ```
 
@@ -250,7 +250,7 @@ services:
   piper:
     build:
       context: .
-      dockerfile: Dockerfile.gpu
+      dockerfile: Dockerfile.CUDA
     gpus: all
     ports:
       - "10200:10200"
@@ -272,6 +272,58 @@ To run OmniVoice instead, replace the environment value with:
 
 The host must have an NVIDIA driver and the NVIDIA Container Toolkit. The GPU
 image is currently `linux/amd64` only because its PyTorch base image is amd64.
+
+### AMD ROCm GPU image
+
+Build the local ROCm image with:
+
+``` sh
+docker build -f Dockerfile.ROCm -t wyoming-piper:rocm .
+```
+
+The image contains ROCm-enabled PyTorch and ONNX Runtime with the MIGraphX
+execution provider. It includes OmniVoice and enables `--use-rocm`
+automatically, so both the Piper and OmniVoice backends use the AMD GPU. Run it
+with access to the kernel compute and graphics devices:
+
+``` sh
+docker run --rm -it \
+    --device=/dev/kfd \
+    --device=/dev/dri \
+    --group-add video \
+    --group-add render \
+    -p 10200:10200 \
+    -v /path/to/local/data:/data \
+    wyoming-piper:rocm \
+    --voice en_US-lessac-medium
+```
+
+For Docker Compose, use the same device mappings:
+
+``` yaml
+services:
+  piper:
+    build:
+      context: .
+      dockerfile: Dockerfile.ROCm
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    ports:
+      - "10200:10200"
+    volumes:
+      - ./data:/data
+    environment:
+      WYOMING_PIPER_ARGS: >-
+        --voice en_US-lessac-medium
+```
+
+The host must have a supported AMD GPU and ROCm driver. The ROCm image is
+`linux/amd64` only because its ONNX Runtime base image is amd64. Operations that
+MIGraphX cannot execute fall back to ONNX Runtime's CPU provider.
 
 ### Container health check
 

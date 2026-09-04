@@ -136,10 +136,16 @@ async def main() -> None:
         help="Download latest voices.json during startup",
     )
     #
-    parser.add_argument(
+    gpu_group = parser.add_mutually_exclusive_group()
+    gpu_group.add_argument(
         "--use-cuda",
         action="store_true",
         help="Use CUDA if available (requires onnxruntime-gpu)",
+    )
+    gpu_group.add_argument(
+        "--use-rocm",
+        action="store_true",
+        help="Use ROCm if available (requires ONNX Runtime with MIGraphX)",
     )
     #
     # Web UI for managing custom voices (runs alongside the Wyoming server)
